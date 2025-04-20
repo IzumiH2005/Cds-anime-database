@@ -5,13 +5,20 @@ import {
   Check,
   Download,
   AlertTriangle,
-  FileQuestion
+  FileQuestion,
+  FileSpreadsheet,
+  Link2,
+  Upload
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import CSVImporter from "@/components/deck-sharing/CSVImporter";
+import FileImporter from "@/components/deck-sharing/FileImporter";
+import LinkImporter from "@/components/deck-sharing/LinkImporter";
 
 import { 
   getSharedDeck,
@@ -21,7 +28,8 @@ import {
   getThemesByDeck,
   getFlashcardsByDeck,
   getUser,
-  Deck
+  Deck,
+  importDeckFromJson
 } from "@/lib/localStorage";
 
 const ImportPage = () => {
@@ -149,7 +157,8 @@ const ImportPage = () => {
     );
   }
   
-  if (!deck || !code) {
+  // Si on a un code de partage mais qu'il est invalide
+  if (code && !deck) {
     return (
       <div className="container px-4 py-8">
         <Link to="/" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6">
@@ -177,6 +186,111 @@ const ImportPage = () => {
               </Button>
             </CardFooter>
           </Card>
+        </div>
+      </div>
+    );
+  }
+  
+  // Page d'importation générique (sans code de partage)
+  if (!code) {
+    const [importMethod, setImportMethod] = useState("link");
+    const [jsonContent, setJsonContent] = useState<string | null>(null);
+    const [jsonError, setJsonError] = useState<string | null>(null);
+    
+    const handleJsonContentChange = (content: string) => {
+      setJsonContent(content);
+      setJsonError(null);
+    };
+    
+    const handleJsonError = (error: string | null) => {
+      setJsonError(error);
+    };
+    
+    const handleJsonImport = () => {
+      if (!jsonContent) return;
+      
+      try {
+        const user = getUser();
+        if (!user) {
+          toast({
+            title: "Erreur",
+            description: "Utilisateur non trouvé",
+            variant: "destructive",
+          });
+          return;
+        }
+        
+        const parsedContent = JSON.parse(jsonContent);
+        const newDeckId = importDeckFromJson(parsedContent, user.id);
+        
+        toast({
+          title: "Deck importé avec succès",
+          description: "Le deck a été ajouté à votre collection",
+        });
+        
+        navigate(`/deck/${newDeckId}`);
+      } catch (error) {
+        console.error("Error importing JSON:", error);
+        toast({
+          title: "Erreur lors de l'importation",
+          description: "Le format du JSON est invalide ou incompatible",
+          variant: "destructive",
+        });
+      }
+    };
+    
+    return (
+      <div className="container px-4 py-8">
+        <Link to="/" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6">
+          <ArrowLeft className="mr-1 h-4 w-4" />
+          Retour à l'accueil
+        </Link>
+        
+        <div className="max-w-2xl mx-auto space-y-8">
+          <header>
+            <h1 className="text-3xl font-bold tracking-tight mb-2">Importer des Flashcards</h1>
+            <p className="text-muted-foreground">
+              Importez des flashcards depuis différentes sources pour enrichir votre collection
+            </p>
+          </header>
+          
+          <Tabs defaultValue="link" onValueChange={setImportMethod} className="space-y-6">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="link" className="flex items-center gap-2">
+                <Link2 className="h-4 w-4" /> Par lien
+              </TabsTrigger>
+              <TabsTrigger value="file" className="flex items-center gap-2">
+                <Upload className="h-4 w-4" /> Par fichier
+              </TabsTrigger>
+              <TabsTrigger value="csv" className="flex items-center gap-2">
+                <FileSpreadsheet className="h-4 w-4" /> Par CSV
+              </TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="link">
+              <LinkImporter 
+                onJsonContentChange={handleJsonContentChange}
+                onError={handleJsonError}
+              />
+              
+              {jsonContent && !jsonError && (
+                <div className="mt-4 flex justify-end">
+                  <Button onClick={handleJsonImport}>
+                    <Download className="mr-2 h-4 w-4" />
+                    Importer le deck
+                  </Button>
+                </div>
+              )}
+            </TabsContent>
+            
+            <TabsContent value="file">
+              <FileImporter onClose={() => navigate("/")} />
+            </TabsContent>
+            
+            <TabsContent value="csv">
+              <CSVImporter onClose={() => navigate("/")} />
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
     );
