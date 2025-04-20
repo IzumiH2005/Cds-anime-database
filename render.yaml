@@ -1,7 +1,7 @@
 
 services:
   - type: web
-    name: flashcard-app
+    name: cds-flashcard-base
     env: static
     buildCommand: npm run build
     staticPublishPath: ./dist
