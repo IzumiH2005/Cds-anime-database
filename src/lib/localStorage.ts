@@ -290,7 +290,8 @@ export const createFlashcard = (flashcard: Omit<Flashcard, 'id' | 'createdAt' | 
     updatedAt: now,
   };
   
-  setItem(STORAGE_KEYS.FLASHCARDS, [...flashcards, newFlashcard]);
+  // Utiliser directement addItem de enhancedLocalStorage pour garantir le bon fonctionnement de la segmentation
+  addItem(STORAGE_KEYS.FLASHCARDS, newFlashcard, []);
   return newFlashcard;
 };
 
@@ -306,20 +307,26 @@ export const updateFlashcard = (id: string, cardData: Partial<Flashcard>): Flash
     updatedAt: new Date().toISOString() 
   };
   
-  flashcards[cardIndex] = updatedCard;
-  setItem(STORAGE_KEYS.FLASHCARDS, flashcards);
+  // Utiliser updateItem de enhancedLocalStorage pour mise à jour optimisée
+  updateItem(
+    STORAGE_KEYS.FLASHCARDS,
+    id,
+    () => updatedCard,
+    'id',
+    []
+  );
   
   return updatedCard;
 };
 
 export const deleteFlashcard = (id: string): boolean => {
-  const flashcards = getFlashcards();
-  const updatedFlashcards = flashcards.filter(card => card.id !== id);
-  
-  if (updatedFlashcards.length === flashcards.length) return false;
-  
-  setItem(STORAGE_KEYS.FLASHCARDS, updatedFlashcards);
-  return true;
+  // Utiliser removeItem de enhancedLocalStorage pour suppression optimisée
+  return removeItem(
+    STORAGE_KEYS.FLASHCARDS,
+    id,
+    'id',
+    []
+  );
 };
 
 // Shared deck functions
@@ -645,21 +652,24 @@ export const initializeDefaultUser = (): User => {
 
 // Sample data generator for demo
 export const generateSampleData = (): void => {
-  // Only initialize empty collections if they don't exist yet
-  if (!localStorage.getItem('decks')) {
-    localStorage.setItem('decks', JSON.stringify([]));
+  // Initialiser les collections avec notre système amélioré de localStorage
+  if (!localStorage.getItem(STORAGE_KEYS.DECKS)) {
+    saveData(STORAGE_KEYS.DECKS, []);
   }
   
-  if (!localStorage.getItem('themes')) {
-    localStorage.setItem('themes', JSON.stringify([]));
+  if (!localStorage.getItem(STORAGE_KEYS.THEMES)) {
+    saveData(STORAGE_KEYS.THEMES, []);
   }
   
-  if (!localStorage.getItem('flashcards')) {
-    localStorage.setItem('flashcards', JSON.stringify([]));
+  if (!localStorage.getItem(STORAGE_KEYS.FLASHCARDS)) {
+    saveData(STORAGE_KEYS.FLASHCARDS, []);
   }
   
-  if (!localStorage.getItem('users')) {
-    localStorage.setItem('users', JSON.stringify([]));
+  // Pour être certain que les anciennes données segmentées sont correctement gérées
+  // on force une lecture et sauvegarde qui utilise notre système de segmentation
+  const flashcards = getFlashcards();
+  if (flashcards.length > 0) {
+    saveData(STORAGE_KEYS.FLASHCARDS, flashcards);
   }
 };
 
