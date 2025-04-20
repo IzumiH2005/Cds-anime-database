@@ -66,9 +66,18 @@ const STORAGE_KEYS = {
   SHARED_DECKS: 'cds-flashcard-shared-decks',
 };
 
-// Helper functions
+// Importer les fonctions d'amélioration de localStorage
+import { loadData, saveData, addItem, updateItem, removeItem, findItemById, filterItems } from './enhancedLocalStorage';
+
+// Helper functions avec segmentation améliorée
 const getItem = <T>(key: string, defaultValue: T): T => {
   try {
+    // Si c'est un array, utiliser loadData qui gère la segmentation
+    if (Array.isArray(defaultValue)) {
+      return loadData(key, defaultValue) as any;
+    }
+    
+    // Sinon, utiliser localStorage standard
     const item = localStorage.getItem(key);
     return item ? JSON.parse(item) : defaultValue;
   } catch (error) {
@@ -79,7 +88,13 @@ const getItem = <T>(key: string, defaultValue: T): T => {
 
 const setItem = <T>(key: string, value: T): void => {
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    // Si c'est un array, utiliser saveData qui gère la segmentation
+    if (Array.isArray(value)) {
+      saveData(key, value);
+    } else {
+      // Sinon, utiliser localStorage standard
+      localStorage.setItem(key, JSON.stringify(value));
+    }
   } catch (error) {
     console.error(`Error setting item in localStorage: ${key}`, error);
   }
