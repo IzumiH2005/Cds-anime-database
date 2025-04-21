@@ -1,87 +1,180 @@
-// Adapté de shadcn/ui (https://ui.shadcn.com/docs/components/toast)
-import { useState, useEffect } from 'react';
+// Adapted from shadcn/ui (https://ui.shadcn.com)
+import * as React from "react"
 
-export type ToastType = 'default' | 'success' | 'error' | 'warning' | 'info';
+import type {
+  ToastActionElement,
+  ToastProps,
+} from "@/components/ui/toast"
 
-export interface Toast {
-  id: string;
-  title?: string;
-  description?: string;
-  type?: ToastType;
-  duration?: number;
-  action?: React.ReactNode;
-  onDismiss?: () => void;
+const TOAST_LIMIT = 5
+const TOAST_REMOVE_DELAY = 1000000
+
+type ToasterToast = ToastProps & {
+  id: string
+  title?: React.ReactNode
+  description?: React.ReactNode
+  action?: ToastActionElement
 }
 
-export interface ToastOptions {
-  title?: string;
-  description?: string;
-  type?: ToastType;
-  duration?: number;
-  action?: React.ReactNode;
-  onDismiss?: () => void;
+const actionTypes = {
+  ADD_TOAST: "ADD_TOAST",
+  UPDATE_TOAST: "UPDATE_TOAST",
+  DISMISS_TOAST: "DISMISS_TOAST",
+  REMOVE_TOAST: "REMOVE_TOAST",
+} as const
+
+let count = 0
+
+function genId() {
+  count = (count + 1) % Number.MAX_SAFE_INTEGER
+  return count.toString()
 }
 
-let id = 0;
-const genId = () => `toast-${++id}`;
+type ActionType = typeof actionTypes
 
-interface UseToastReturn {
-  toasts: Toast[];
-  toast: (options: ToastOptions) => void;
-  dismiss: (id: string) => void;
-  clear: () => void;
-}
-
-export function useToast(): UseToastReturn {
-  const [toasts, setToasts] = useState<Toast[]>([]);
-
-  // Fonction pour ajouter un toast
-  const toast = (options: ToastOptions) => {
-    const newToast: Toast = {
-      id: genId(),
-      title: options.title,
-      description: options.description,
-      type: options.type || 'default',
-      duration: options.duration || 5000,  // 5 secondes par défaut
-      action: options.action,
-      onDismiss: options.onDismiss
-    };
-
-    setToasts(prev => [...prev, newToast]);
-    
-    // Auto-remove toast after duration
-    if (newToast.duration) {
-      setTimeout(() => {
-        dismiss(newToast.id);
-      }, newToast.duration);
+type Action =
+  | {
+      type: ActionType["ADD_TOAST"]
+      toast: ToasterToast
+    }
+  | {
+      type: ActionType["UPDATE_TOAST"]
+      toast: Partial<ToasterToast>
+    }
+  | {
+      type: ActionType["DISMISS_TOAST"]
+      toastId?: string
+    }
+  | {
+      type: ActionType["REMOVE_TOAST"]
+      toastId?: string
     }
 
-    return newToast.id;
-  };
+interface State {
+  toasts: ToasterToast[]
+}
 
-  // Fonction pour retirer un toast
-  const dismiss = (id: string) => {
-    // Trouver le toast pour exécuter son onDismiss si nécessaire
-    const toastToDismiss = toasts.find(t => t.id === id);
-    
-    if (toastToDismiss?.onDismiss) {
-      toastToDismiss.onDismiss();
-    }
-    
-    setToasts(prev => prev.filter(toast => toast.id !== id));
-  };
+const toastTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
 
-  // Fonction pour retirer tous les toasts
-  const clear = () => {
-    // Exécuter onDismiss pour chaque toast si nécessaire
-    toasts.forEach(toast => {
-      if (toast.onDismiss) {
-        toast.onDismiss();
+const reducer = (state: State, action: Action): State => {
+  switch (action.type) {
+    case actionTypes.ADD_TOAST:
+      return {
+        ...state,
+        toasts: [action.toast, ...state.toasts].slice(0, TOAST_LIMIT),
       }
-    });
-    
-    setToasts([]);
-  };
 
-  return { toasts, toast, dismiss, clear };
+    case actionTypes.UPDATE_TOAST:
+      return {
+        ...state,
+        toasts: state.toasts.map((t) =>
+          t.id === action.toast.id ? { ...t, ...action.toast } : t
+        ),
+      }
+
+    case actionTypes.DISMISS_TOAST: {
+      const { toastId } = action
+
+      // ! Side effects ! - This could be extracted into a dismissToast() action,
+      // but I'll keep it here for simplicity
+      if (toastId) {
+        if (toastTimeouts.has(toastId)) {
+          clearTimeout(toastTimeouts.get(toastId))
+          toastTimeouts.delete(toastId)
+        }
+      } else {
+        for (const [id, timeout] of toastTimeouts.entries()) {
+          clearTimeout(timeout)
+          toastTimeouts.delete(id)
+        }
+      }
+
+      return {
+        ...state,
+        toasts: state.toasts.map((t) =>
+          t.id === toastId || toastId === undefined
+            ? {
+                ...t,
+                open: false,
+              }
+            : t
+        ),
+      }
+    }
+    case actionTypes.REMOVE_TOAST:
+      if (action.toastId === undefined) {
+        return {
+          ...state,
+          toasts: [],
+        }
+      }
+      return {
+        ...state,
+        toasts: state.toasts.filter((t) => t.id !== action.toastId),
+      }
+  }
 }
+
+const listeners: Array<(state: State) => void> = []
+
+let memoryState: State = { toasts: [] }
+
+function dispatch(action: Action) {
+  memoryState = reducer(memoryState, action)
+  listeners.forEach((listener) => {
+    listener(memoryState)
+  })
+}
+
+interface Toast extends Omit<ToasterToast, "id"> {}
+
+function toast({ ...props }: Toast) {
+  const id = genId()
+
+  const update = (props: ToasterToast) =>
+    dispatch({
+      type: actionTypes.UPDATE_TOAST,
+      toast: { ...props, id },
+    })
+  const dismiss = () => dispatch({ type: actionTypes.DISMISS_TOAST, toastId: id })
+
+  dispatch({
+    type: actionTypes.ADD_TOAST,
+    toast: {
+      ...props,
+      id,
+      open: true,
+      onOpenChange: (open) => {
+        if (!open) dismiss()
+      },
+    },
+  })
+
+  return {
+    id: id,
+    dismiss,
+    update,
+  }
+}
+
+function useToast() {
+  const [state, setState] = React.useState<State>(memoryState)
+
+  React.useEffect(() => {
+    listeners.push(setState)
+    return () => {
+      const index = listeners.indexOf(setState)
+      if (index > -1) {
+        listeners.splice(index, 1)
+      }
+    }
+  }, [state])
+
+  return {
+    ...state,
+    toast,
+    dismiss: (toastId?: string) => dispatch({ type: actionTypes.DISMISS_TOAST, toastId }),
+  }
+}
+
+export { useToast, toast }
