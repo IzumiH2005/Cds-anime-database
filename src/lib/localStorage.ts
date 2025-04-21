@@ -2,7 +2,23 @@ import { storage } from './enhancedLocalStorage';
 import { v4 as uuidv4 } from 'uuid';
 
 // Types
-interface Deck {
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  avatar?: string;
+  bio?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SharedDeckExport {
+  deck: Deck;
+  themes: Theme[];
+  flashcards: Flashcard[];
+}
+
+export interface Deck {
   id: string;
   title: string;
   description: string;
@@ -15,7 +31,7 @@ interface Deck {
   tags: string[];
 }
 
-interface Theme {
+export interface Theme {
   id: string;
   deckId: string;
   title: string;
@@ -25,14 +41,14 @@ interface Theme {
   updatedAt: string;
 }
 
-interface FlashcardContent {
+export interface FlashcardContent {
   text: string;
   image?: string;
   audio?: string;
   additionalInfo?: string;
 }
 
-interface Flashcard {
+export interface Flashcard {
   id: string;
   deckId: string;
   themeId?: string;
@@ -43,6 +59,7 @@ interface Flashcard {
 }
 
 // Clés de stockage
+const USERS_KEY = 'users';
 const DECKS_KEY = 'decks';
 const THEMES_KEY = 'themes';
 const CARDS_KEY = 'cards';
@@ -259,4 +276,212 @@ export const generateShareCode = (deckId: string) => {
   // Dans une implémentation réelle, nous enverrions cela au serveur
   // Pour l'instant, générons simplement un code court
   return Math.random().toString(36).substring(2, 8).toUpperCase();
+};
+export const createShareCode = generateShareCode;
+
+// Fonctions pour la gestion des utilisateurs
+export const getUsers = () => storage.getArray<User>(USERS_KEY);
+export const getUser = (id: string) => storage.getFromArray<User>(USERS_KEY, id);
+export const createUser = (user: Omit<User, 'id' | 'createdAt' | 'updatedAt'>) => {
+  const now = new Date().toISOString();
+  return storage.addToArray<User>(USERS_KEY, {
+    ...user,
+    id: uuidv4(),
+    createdAt: now,
+    updatedAt: now
+  });
+};
+export const updateUser = (id: string, data: Partial<User>) => {
+  const user = getUser(id);
+  if (!user) return false;
+  
+  return storage.updateInArray<User>(USERS_KEY, {
+    ...user,
+    ...data,
+    updatedAt: new Date().toISOString()
+  });
+};
+
+export const initializeDefaultUser = () => {
+  const users = getUsers();
+  if (users.length === 0) {
+    const userId = uuidv4();
+    createUser({
+      name: "Utilisateur",
+      email: "utilisateur@example.com",
+      avatar: "https://source.unsplash.com/random/100x100/?avatar"
+    });
+    return userId;
+  }
+  return users[0].id;
+};
+
+// Export/Import fonctionnalités
+export const exportDeckToJson = (deckId: string) => {
+  const deck = getDeckById(deckId);
+  if (!deck) return null;
+  
+  const themes = getThemesByDeckId(deckId);
+  const flashcards = getFlashcardsByDeckId(deckId);
+  
+  return {
+    deck,
+    themes,
+    flashcards
+  };
+};
+
+export const importDeckFromJson = (data: SharedDeckExport, userId: string): string | null => {
+  try {
+    // Créer une copie du deck avec un nouvel ID et le nouvel auteur
+    const now = new Date().toISOString();
+    const user = getUser(userId);
+    
+    if (!user) return null;
+    
+    // Créer un nouveau deck basé sur celui importé
+    const newDeck = createDeck({
+      title: `${data.deck.title} (Importé)`,
+      description: data.deck.description,
+      coverImage: data.deck.coverImage,
+      isPublic: false,
+      author: user.name,
+      authorId: userId,
+      tags: [...data.deck.tags, 'importé']
+    });
+    
+    // Créer de nouveaux thèmes
+    const themeIdMap = new Map<string, string>();
+    data.themes.forEach(theme => {
+      const newTheme = createTheme({
+        deckId: newDeck.id,
+        title: theme.title,
+        description: theme.description,
+        coverImage: theme.coverImage
+      });
+      themeIdMap.set(theme.id, newTheme.id);
+    });
+    
+    // Créer de nouvelles flashcards
+    data.flashcards.forEach(card => {
+      createFlashcard({
+        deckId: newDeck.id,
+        themeId: card.themeId ? themeIdMap.get(card.themeId) : undefined,
+        front: { ...card.front },
+        back: { ...card.back }
+      });
+    });
+    
+    return newDeck.id;
+  } catch (error) {
+    console.error("Erreur lors de l'importation du deck:", error);
+    return null;
+  }
+};
+
+export const updateDeckFromJson = (deckId: string, data: SharedDeckExport): boolean => {
+  try {
+    const deck = getDeckById(deckId);
+    if (!deck) return false;
+    
+    // Mettre à jour les thèmes existants et ajouter les nouveaux
+    const existingThemes = getThemesByDeckId(deckId);
+    const themeIdMap = new Map<string, string>();
+    
+    // Supprimer les anciens thèmes
+    existingThemes.forEach(theme => {
+      deleteTheme(theme.id);
+    });
+    
+    // Ajouter les nouveaux thèmes
+    data.themes.forEach(theme => {
+      const newTheme = createTheme({
+        deckId: deckId,
+        title: theme.title,
+        description: theme.description,
+        coverImage: theme.coverImage
+      });
+      themeIdMap.set(theme.id, newTheme.id);
+    });
+    
+    // Supprimer les anciennes flashcards
+    const existingCards = getFlashcardsByDeckId(deckId);
+    existingCards.forEach(card => {
+      deleteFlashcard(card.id);
+    });
+    
+    // Ajouter les nouvelles flashcards
+    data.flashcards.forEach(card => {
+      createFlashcard({
+        deckId: deckId,
+        themeId: card.themeId ? themeIdMap.get(card.themeId) : undefined,
+        front: { ...card.front },
+        back: { ...card.back }
+      });
+    });
+    
+    // Mettre à jour le deck
+    updateDeck(deckId, {
+      title: data.deck.title,
+      description: data.deck.description,
+      coverImage: data.deck.coverImage,
+      tags: data.deck.tags
+    });
+    
+    return true;
+  } catch (error) {
+    console.error("Erreur lors de la mise à jour du deck:", error);
+    return false;
+  }
+};
+
+// Fonctions d'exploration et partage
+export const getSharedImportedDecks = (): Deck[] => {
+  const decks = getDecks();
+  // On pourrait stocker les decks partagés dans le stockage local
+  // Pour l'instant, retournons simplement les decks publics
+  return decks.filter(deck => deck.isPublic);
+};
+
+export const getSharedDeck = (sharedCode: string): Deck | null => {
+  // Dans une implémentation réelle, on utiliserait le code de partage
+  // pour récupérer un deck partagé depuis le serveur
+  // Pour l'instant, on retourne simplement le premier deck public
+  const sharedDecks = getSharedImportedDecks();
+  return sharedDecks.length > 0 ? sharedDecks[0] : null;
+};
+
+// Fonctions pour la publication des decks
+export const publishDeck = (deckId: string): boolean => {
+  const deck = getDeckById(deckId);
+  if (!deck) return false;
+  
+  return updateDeck(deckId, { isPublic: true });
+};
+
+export const unpublishDeck = (deckId: string): boolean => {
+  const deck = getDeckById(deckId);
+  if (!deck) return false;
+  
+  return updateDeck(deckId, { isPublic: false });
+};
+
+export const updatePublishedDeck = (deckId: string, data: Partial<Deck>): boolean => {
+  return updateDeck(deckId, data);
+};
+
+export const getFlashcardsByDeck = getFlashcardsByDeckId;
+export const getDeck = getDeckById;
+export const getThemesByDeck = getThemesByDeckId;
+export const getTheme = getThemeById;
+export const getFlashcardsByTheme = getFlashcardsByThemeId;
+
+// Utilitaires
+export const getBase64 = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = error => reject(error);
+  });
 };

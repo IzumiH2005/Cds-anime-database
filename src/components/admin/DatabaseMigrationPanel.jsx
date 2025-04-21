@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { toast } from "@/components/ui/toast";
+import { useToast } from "@/hooks/use-toast";
 import { ArrowRightCircle, CheckCircle, Database, XCircle } from 'lucide-react';
 
 // Fonction pour exporter les données de localStorage
@@ -107,6 +107,7 @@ const checkDatabaseState = async () => {
 };
 
 export function DatabaseMigrationPanel() {
+  const { toast } = useToast();
   const [migrationStatus, setMigrationStatus] = useState('idle'); // idle, exporting, migrating, success, error
   const [dbStatus, setDbStatus] = useState(null);
   const [exportedData, setExportedData] = useState(null);
@@ -125,14 +126,14 @@ export function DatabaseMigrationPanel() {
         toast({
           title: 'Vérification réussie',
           description: 'La base de données est accessible',
-          status: 'success',
+          variant: 'default',
         });
       } else {
         setErrorMessage(result.error);
         toast({
           title: 'Erreur de vérification',
           description: result.error,
-          status: 'error',
+          variant: 'destructive',
         });
       }
     } catch (error) {
@@ -140,7 +141,7 @@ export function DatabaseMigrationPanel() {
       toast({
         title: 'Erreur inattendue',
         description: error.message,
-        status: 'error',
+        variant: 'destructive',
       });
     } finally {
       setMigrationStatus('idle');
@@ -160,7 +161,7 @@ export function DatabaseMigrationPanel() {
         toast({
           title: 'Exportation réussie',
           description: 'Les données ont été exportées avec succès',
-          status: 'success',
+          variant: 'default',
         });
         setMigrationStatus('exported');
       } else {
@@ -168,7 +169,7 @@ export function DatabaseMigrationPanel() {
         toast({
           title: 'Erreur d\'exportation',
           description: result.error,
-          status: 'error',
+          variant: 'destructive',
         });
         setMigrationStatus('error');
       }
@@ -177,7 +178,7 @@ export function DatabaseMigrationPanel() {
       toast({
         title: 'Erreur inattendue',
         description: error.message,
-        status: 'error',
+        variant: 'destructive',
       });
       setMigrationStatus('error');
     }
@@ -189,7 +190,7 @@ export function DatabaseMigrationPanel() {
       toast({
         title: 'Erreur',
         description: 'Veuillez d\'abord exporter les données',
-        status: 'error',
+        variant: 'destructive',
       });
       return;
     }
@@ -205,7 +206,7 @@ export function DatabaseMigrationPanel() {
         toast({
           title: 'Migration réussie',
           description: 'Les données ont été migrées avec succès vers PostgreSQL',
-          status: 'success',
+          variant: 'default',
         });
         setMigrationStatus('success');
       } else {
@@ -213,7 +214,7 @@ export function DatabaseMigrationPanel() {
         toast({
           title: 'Erreur de migration',
           description: result.error,
-          status: 'error',
+          variant: 'destructive',
         });
         setMigrationStatus('error');
       }
@@ -222,7 +223,7 @@ export function DatabaseMigrationPanel() {
       toast({
         title: 'Erreur inattendue',
         description: error.message,
-        status: 'error',
+        variant: 'destructive',
       });
       setMigrationStatus('error');
     }

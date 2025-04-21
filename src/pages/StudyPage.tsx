@@ -166,8 +166,8 @@ const StudyPage = () => {
 
   const handleCardFlip = () => {
     setIsFlipped(!isFlipped);
-    if (!isFlipped) {
-      recordCardStudy(true);
+    if (!isFlipped && filteredCards[currentCardIndex]) {
+      recordCardStudy(filteredCards[currentCardIndex].id, effectiveDeckId || "", true, 0);
     }
   };
 
@@ -224,7 +224,7 @@ const StudyPage = () => {
       
       if (isCorrect) {
         setCorrectAnswers(prev => prev + 1);
-        recordCardStudy(true);
+        recordCardStudy(cardId, effectiveDeckId || "", true, 0);
         toast({
           title: "Correct!",
           description: feedback,
@@ -232,7 +232,7 @@ const StudyPage = () => {
         });
       } else {
         setIncorrectAnswers(prev => prev + 1);
-        recordCardStudy(false);
+        recordCardStudy(cardId, effectiveDeckId || "", false, 0);
         toast({
           title: "Incorrect",
           description: feedback,
@@ -262,10 +262,10 @@ const StudyPage = () => {
     
     if (isCorrect) {
       setCorrectAnswers(prev => prev + 1);
-      recordCardStudy(true);
+      recordCardStudy(cardId, effectiveDeckId || "", true, 0);
     } else {
       setIncorrectAnswers(prev => prev + 1);
-      recordCardStudy(false);
+      recordCardStudy(cardId, effectiveDeckId || "", false, 0);
     }
     
     if (currentCardIndex < filteredCards.length - 1) {
