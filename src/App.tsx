@@ -21,6 +21,7 @@ import SharePage from '@/pages/SharePage';
 import StatsPage from '@/pages/StatsPage';
 import LearningMethodsPage from '@/pages/LearningMethodsPage';
 import ThemePage from '@/pages/ThemePage';
+import AdminPage from '@/pages/AdminPage';
 import NotFound from '@/pages/NotFound';
 
 import './App.css';
@@ -46,12 +47,14 @@ function App() {
               <Route path="/my-decks" element={<MyDecksPage />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/study/:deckId" element={<StudyPage />} />
+              <Route path="/deck/:deckId/theme/:themeId/study" element={<StudyPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/import" element={<ImportPage />} />
               <Route path="/share" element={<SharePage />} />
               <Route path="/stats" element={<StatsPage />} />
               <Route path="/learning-methods" element={<LearningMethodsPage />} />
               <Route path="/themes" element={<ThemePage />} />
+              <Route path="/admin" element={<AdminPage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </main>

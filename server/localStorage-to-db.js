@@ -1,154 +1,267 @@
-import { storage } from './storage.js';
+import pg from 'pg';
 import { v4 as uuidv4 } from 'uuid';
+const { Pool } = pg;
 
-// Récupérer les données du localStorage
+// Fonction pour récupérer les données de localStorage (à appeler depuis le navigateur)
 function getLocalStorageData() {
-  try {
-    // Dans un environnement de navigateur, on utiliserait
-    // const decks = JSON.parse(localStorage.getItem('flashcards-decks') || '[]');
-    // const themes = JSON.parse(localStorage.getItem('flashcards-themes') || '[]');
-    // const cards = JSON.parse(localStorage.getItem('flashcards-cards') || '[]');
-    
-    // Pour les besoins de ce script, on utilise des données statiques
-    return {
-      decks: [],
-      themes: [],
-      cards: []
-    };
-  } catch (error) {
-    console.error("Erreur lors de la récupération des données du localStorage:", error);
-    return {
-      decks: [],
-      themes: [],
-      cards: []
-    };
-  }
+  // Récupérer les données de localStorage
+  const data = {
+    users: JSON.parse(localStorage.getItem('users') || '[]'),
+    decks: JSON.parse(localStorage.getItem('decks') || '[]'),
+    themes: JSON.parse(localStorage.getItem('themes') || '[]'),
+    flashcards: JSON.parse(localStorage.getItem('flashcards') || '[]'),
+    sharedCodes: JSON.parse(localStorage.getItem('sharedCodes') || '[]'),
+    importedDecks: JSON.parse(localStorage.getItem('importedDecks') || '[]')
+  };
+  
+  return data;
 }
 
-// Migrer les données vers la base de données
+// Fonction pour migrer les données vers PostgreSQL (côté serveur)
 async function migrateDataToDB(data) {
-  const { decks, themes, cards } = data;
-  
-  // Créer un utilisateur administrateur s'il n'existe pas
-  let adminUser;
-  try {
-    adminUser = await storage.getUserByExternalId('admin-user');
-    if (!adminUser) {
-      adminUser = await storage.createUser({
-        externalId: 'admin-user',
-        name: 'Administrateur',
-        email: 'admin@example.com',
-        avatar: 'https://api.dicebear.com/7.x/micah/svg?seed=admin',
-        bio: 'Administrateur système'
-      });
-    }
-  } catch (error) {
-    console.error("Erreur lors de la création de l'utilisateur admin:", error);
-    return;
+  if (!process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL n'est pas défini");
   }
-  
-  // Migrer les decks
-  for (const deck of decks) {
-    try {
-      const existingDeck = await storage.getDeckByExternalId(deck.id);
-      if (!existingDeck) {
-        const newDeck = await storage.createDeck({
-          externalId: deck.id,
-          title: deck.title,
-          description: deck.description || 'Aucune description',
-          coverImage: deck.coverImage,
-          authorId: adminUser.id,
-          isPublic: deck.isPublic || false,
-          isPublished: true,
-          publishedAt: new Date(),
-          tags: deck.tags || []
-        });
-        
-        console.log(`Deck migré: ${newDeck.title}`);
-        
-        // Migrer les thèmes du deck
-        const deckThemes = themes.filter(t => t.deckId === deck.id);
-        for (const theme of deckThemes) {
-          const newTheme = await storage.createTheme({
-            externalId: theme.id,
-            deckId: newDeck.id,
-            title: theme.title,
-            description: theme.description || 'Aucune description',
-            coverImage: theme.coverImage
-          });
-          
-          console.log(`Thème migré: ${newTheme.title}`);
-          
-          // Migrer les cartes du thème
-          const themeCards = cards.filter(c => c.themeId === theme.id);
-          for (const card of themeCards) {
-            await storage.createFlashcard({
-              externalId: card.id,
-              deckId: newDeck.id,
-              themeId: newTheme.id,
-              front: card.front,
-              back: card.back
-            });
-          }
-        }
-        
-        // Migrer les cartes sans thème
-        const deckCards = cards.filter(c => c.deckId === deck.id && !c.themeId);
-        for (const card of deckCards) {
-          await storage.createFlashcard({
-            externalId: card.id,
-            deckId: newDeck.id,
-            front: card.front,
-            back: card.back
-          });
+
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    // 1. Migrer les utilisateurs
+    console.log(`Migration de ${data.users.length} utilisateurs...`);
+    const users = [];
+    for (const user of data.users) {
+      const [dbUser] = await client.query(`
+        INSERT INTO users (external_id, name, email, avatar, bio)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (external_id) DO UPDATE 
+        SET name = $2, email = $3, avatar = $4, bio = $5
+        RETURNING *
+      `, [
+        user.id || uuidv4(),
+        user.name || 'Utilisateur',
+        user.email || `user_${uuidv4().substring(0, 8)}@example.com`,
+        user.avatar || null,
+        user.bio || null
+      ]);
+      users.push({ ...user, dbId: dbUser.id });
+    }
+
+    // 2. Migrer les decks
+    console.log(`Migration de ${data.decks.length} decks...`);
+    const decks = [];
+    for (const deck of data.decks) {
+      // Trouver l'utilisateur correspondant ou utiliser un par défaut
+      let authorId = 1; // ID par défaut
+      const user = users.find(u => u.id === deck.authorId);
+      if (user && user.dbId) {
+        authorId = user.dbId;
+      }
+
+      const [dbDeck] = await client.query(`
+        INSERT INTO decks (
+          external_id, title, description, cover_image, 
+          author_id, is_public, is_published, published_at, tags
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ON CONFLICT (external_id) DO UPDATE 
+        SET title = $2, description = $3, cover_image = $4,
+            is_public = $6, is_published = $7, published_at = $8, tags = $9
+        RETURNING *
+      `, [
+        deck.id || uuidv4(),
+        deck.title || 'Deck sans titre',
+        deck.description || 'Pas de description',
+        deck.coverImage || null,
+        authorId,
+        deck.isPublic || false,
+        deck.isPublished || false,
+        deck.publishedAt ? new Date(deck.publishedAt) : null,
+        deck.tags || []
+      ]);
+      decks.push({ ...deck, dbId: dbDeck.id });
+    }
+
+    // 3. Migrer les thèmes
+    console.log(`Migration de ${data.themes.length} thèmes...`);
+    const themes = [];
+    for (const theme of data.themes) {
+      // Trouver le deck correspondant
+      let deckId = null;
+      const deck = decks.find(d => d.id === theme.deckId);
+      if (deck && deck.dbId) {
+        deckId = deck.dbId;
+      } else {
+        console.warn(`Deck introuvable pour le thème ${theme.id}, ignoré`);
+        continue;
+      }
+
+      const [dbTheme] = await client.query(`
+        INSERT INTO themes (
+          external_id, deck_id, title, description, cover_image
+        )
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (external_id) DO UPDATE 
+        SET deck_id = $2, title = $3, description = $4, cover_image = $5
+        RETURNING *
+      `, [
+        theme.id || uuidv4(),
+        deckId,
+        theme.title || 'Thème sans titre',
+        theme.description || 'Pas de description',
+        theme.coverImage || null
+      ]);
+      themes.push({ ...theme, dbId: dbTheme.id });
+    }
+
+    // 4. Migrer les flashcards
+    console.log(`Migration de ${data.flashcards.length} flashcards...`);
+    for (const card of data.flashcards) {
+      // Trouver le deck correspondant
+      let deckId = null;
+      const deck = decks.find(d => d.id === card.deckId);
+      if (deck && deck.dbId) {
+        deckId = deck.dbId;
+      } else {
+        console.warn(`Deck introuvable pour la flashcard ${card.id}, ignorée`);
+        continue;
+      }
+
+      // Trouver le thème correspondant (optionnel)
+      let themeId = null;
+      if (card.themeId) {
+        const theme = themes.find(t => t.id === card.themeId);
+        if (theme && theme.dbId) {
+          themeId = theme.dbId;
         }
       }
-    } catch (error) {
-      console.error(`Erreur lors de la migration du deck ${deck.title}:`, error);
+
+      await client.query(`
+        INSERT INTO flashcards (
+          external_id, deck_id, theme_id, front, back
+        )
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (external_id) DO UPDATE 
+        SET deck_id = $2, theme_id = $3, front = $4, back = $5
+        RETURNING *
+      `, [
+        card.id || uuidv4(),
+        deckId,
+        themeId,
+        card.front || { text: "Question" },
+        card.back || { text: "Réponse" }
+      ]);
     }
+
+    // 5. Migrer les codes de partage
+    if (data.sharedCodes && data.sharedCodes.length > 0) {
+      console.log(`Migration de ${data.sharedCodes.length} codes de partage...`);
+      for (const code of data.sharedCodes) {
+        // Trouver le deck correspondant
+        let deckId = null;
+        const deck = decks.find(d => d.id === code.deckId);
+        if (deck && deck.dbId) {
+          deckId = deck.dbId;
+        } else {
+          console.warn(`Deck introuvable pour le code ${code.code}, ignoré`);
+          continue;
+        }
+
+        await client.query(`
+          INSERT INTO shared_codes (
+            code, deck_id, expires_at
+          )
+          VALUES ($1, $2, $3)
+          ON CONFLICT (code) DO UPDATE 
+          SET deck_id = $2, expires_at = $3
+          RETURNING *
+        `, [
+          code.code || uuidv4().substring(0, 8),
+          deckId,
+          code.expiresAt ? new Date(code.expiresAt) : null
+        ]);
+      }
+    }
+
+    // 6. Migrer les decks importés
+    if (data.importedDecks && data.importedDecks.length > 0) {
+      console.log(`Migration de ${data.importedDecks.length} decks importés...`);
+      for (const imported of data.importedDecks) {
+        // Trouver le deck local correspondant
+        let localDeckId = null;
+        const deck = decks.find(d => d.id === imported.localDeckId);
+        if (deck && deck.dbId) {
+          localDeckId = deck.dbId;
+        } else {
+          console.warn(`Deck local introuvable pour l'import ${imported.id}, ignoré`);
+          continue;
+        }
+
+        await client.query(`
+          INSERT INTO imported_decks (
+            original_deck_id, local_deck_id
+          )
+          VALUES ($1, $2)
+          ON CONFLICT (local_deck_id) DO UPDATE 
+          SET original_deck_id = $1
+          RETURNING *
+        `, [
+          imported.originalDeckId || uuidv4(),
+          localDeckId
+        ]);
+      }
+    }
+
+    await client.query('COMMIT');
+    console.log("Migration terminée avec succès");
+    return { success: true, message: "Migration terminée avec succès" };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error("Erreur lors de la migration:", error);
+    return { success: false, error: error.message };
+  } finally {
+    client.release();
+    await pool.end();
   }
-  
-  console.log("Migration terminée avec succès!");
 }
 
-// Fonction pour générer un script de migration
+// Fonction pour générer un script de migration à exécuter côté client
 export function generateMigrationScript() {
-  const data = getLocalStorageData();
-  
-  console.log("Génération du script de migration...");
-  console.log(`Nombre de decks à migrer: ${data.decks.length}`);
-  console.log(`Nombre de thèmes à migrer: ${data.themes.length}`);
-  console.log(`Nombre de cartes à migrer: ${data.cards.length}`);
-  
   return `
-// Script de migration
-(async () => {
-  try {
-    const adminUser = await storage.createUser({
-      externalId: 'admin-user',
-      name: 'Administrateur',
-      email: 'admin@example.com',
-      avatar: 'https://api.dicebear.com/7.x/micah/svg?seed=admin',
-      bio: 'Administrateur système'
+    // Récupérer les données de localStorage
+    const data = {
+      users: JSON.parse(localStorage.getItem('users') || '[]'),
+      decks: JSON.parse(localStorage.getItem('decks') || '[]'),
+      themes: JSON.parse(localStorage.getItem('themes') || '[]'),
+      flashcards: JSON.parse(localStorage.getItem('flashcards') || '[]'),
+      sharedCodes: JSON.parse(localStorage.getItem('sharedCodes') || '[]'),
+      importedDecks: JSON.parse(localStorage.getItem('importedDecks') || '[]')
+    };
+    
+    // Envoyer les données au serveur
+    fetch('/api/admin/migrate-to-db', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(result => {
+      console.log('Résultat de la migration:', result);
+      if (result.success) {
+        alert('Migration terminée avec succès');
+      } else {
+        alert('Erreur lors de la migration: ' + result.error);
+      }
+    })
+    .catch(error => {
+      console.error('Erreur:', error);
+      alert('Erreur lors de la communication avec le serveur');
     });
-    
-    console.log("Utilisateur administrateur créé:", adminUser);
-    
-    // Ici, code pour migrer les données...
-    
-    console.log("Migration terminée avec succès!");
-  } catch (error) {
-    console.error("Erreur lors de la migration:", error);
-  }
-})();
   `;
 }
 
-// Exécuter la migration si appelé directement
-if (typeof require !== 'undefined' && require.main === module) {
-  const data = getLocalStorageData();
-  migrateDataToDB(data)
-    .then(() => console.log("Migration terminée"))
-    .catch(error => console.error("Erreur de migration:", error))
-    .finally(() => process.exit(0));
-}
+export { getLocalStorageData, migrateDataToDB };

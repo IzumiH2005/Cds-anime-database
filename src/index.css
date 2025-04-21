@@ -68,33 +68,51 @@
  
 @layer base {
   * {
-    @apply border-border;
+    border-color: hsl(var(--border));
   }
   body {
-    @apply bg-background text-foreground;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
 
 .nav-link {
-  @apply relative px-2 py-1 text-foreground/80 hover:text-foreground transition-colors;
+  position: relative;
+  padding: 0.25rem 0.5rem;
+  color: hsl(var(--foreground) / 0.8);
+  transition-property: color;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+.nav-link:hover {
+  color: hsl(var(--foreground));
 }
 
 .nav-link::after {
   content: '';
-  @apply absolute left-0 bottom-0 w-0 h-0.5 bg-primary transition-all duration-300;
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 0;
+  height: 0.125rem;
+  background-color: hsl(var(--primary));
+  transition-property: all;
+  transition-duration: 300ms;
 }
 
 .nav-link:hover::after {
-  @apply w-full;
+  width: 100%;
 }
 
 .nav-link.active {
-  @apply text-primary font-medium;
+  color: hsl(var(--primary));
+  font-weight: 500;
 }
 
 .nav-link.active::after {
-  @apply w-full;
+  width: 100%;
 }
 
 /* Animation pour les flashcards */
@@ -109,17 +127,25 @@
 
 /* Style pour les listes à puces */
 .bullet-list {
-  @apply list-disc pl-6 space-y-2;
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
 }
 
 .bullet-list li {
-  @apply text-foreground/90;
+  color: hsl(var(--foreground) / 0.9);
+  margin-bottom: 0.5rem;
 }
 
 .number-list {
-  @apply list-decimal pl-6 space-y-2;
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
 }
 
 .number-list li {
-  @apply text-foreground/90;
+  color: hsl(var(--foreground) / 0.9);
+  margin-bottom: 0.5rem;
 }
