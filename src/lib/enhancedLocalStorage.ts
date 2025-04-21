@@ -64,9 +64,82 @@ class EnhancedLocalStorage {
     
     try {
       const serializedValue = typeof value === 'string' ? value : JSON.stringify(value);
+      
+      // Vérifier la taille avant de sauvegarder
+      const estimatedSize = new Blob([serializedValue]).size;
+      
+      // Si la taille est trop grande, essayons de compresser ou diviser les données
+      if (estimatedSize > 4500000) { // ~4.5MB pour être prudent
+        console.warn(`Données trop volumineuses pour "${key}" (${estimatedSize} bytes). Compression en cours...`);
+        
+        // Pour les tableaux, nous pouvons les diviser en plusieurs parties
+        if (Array.isArray(value)) {
+          const chunks = this.chunkArray(value, 50); // Diviser en chunks de 50 éléments
+          
+          // Stocker chaque chunk séparément
+          chunks.forEach((chunk, index) => {
+            const chunkKey = `${prefixedKey}_chunk_${index}`;
+            const chunkValue = JSON.stringify(chunk);
+            localStorage.setItem(chunkKey, chunkValue);
+          });
+          
+          // Stocker les métadonnées
+          const metadata = {
+            isChunked: true,
+            totalChunks: chunks.length,
+            originalKey: prefixedKey
+          };
+          localStorage.setItem(`${prefixedKey}_metadata`, JSON.stringify(metadata));
+          localStorage.setItem(prefixedKey, JSON.stringify({ isChunkedData: true }));
+          
+          return;
+        }
+      }
+      
       localStorage.setItem(prefixedKey, serializedValue);
     } catch (e) {
       console.error(`Erreur lors du stockage de "${key}" dans localStorage:`, e);
+      
+      // Si l'erreur est due à la limite de quota, essayons de libérer de l'espace
+      if (e instanceof DOMException && 
+          (e.name === 'QuotaExceededError' || 
+           e.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
+        this.handleStorageLimit(key, value);
+      }
+    }
+  }
+  
+  // Méthode auxiliaire pour diviser un tableau en plus petits morceaux
+  private chunkArray<T>(array: T[], chunkSize: number): T[][] {
+    const chunks = [];
+    for (let i = 0; i < array.length; i += chunkSize) {
+      chunks.push(array.slice(i, i + chunkSize));
+    }
+    return chunks;
+  }
+  
+  // Gérer le dépassement de la limite de stockage
+  private handleStorageLimit<T>(key: string, value: T): void {
+    console.warn("Limite de stockage atteinte, tentative de libération d'espace...");
+    
+    // Stratégie 1: Supprimer les anciennes données temporaires
+    const keysToKeep = ['decks', 'themes', 'cards', 'users', 'session'];
+    const prefixedKeysToKeep = keysToKeep.map(k => this.getKey(k));
+    
+    Object.keys(localStorage).forEach(storageKey => {
+      if (storageKey.startsWith(`${this.prefix}-`) && 
+          !prefixedKeysToKeep.some(k => storageKey.startsWith(k))) {
+        localStorage.removeItem(storageKey);
+      }
+    });
+    
+    // Réessayer après nettoyage
+    try {
+      const prefixedKey = this.getKey(key);
+      const serializedValue = typeof value === 'string' ? value : JSON.stringify(value);
+      localStorage.setItem(prefixedKey, serializedValue);
+    } catch (e) {
+      console.error("Impossible de stocker les données même après nettoyage", e);
     }
   }
   
@@ -95,7 +168,32 @@ class EnhancedLocalStorage {
   
   // Manipuler des tableaux
   getArray<T>(key: string): T[] {
-    return this.get<T[]>(key, { defaultValue: [] });
+    const data = this.get<any>(key, { defaultValue: [] });
+    
+    // Vérifier si les données sont en format chunked
+    if (data && typeof data === 'object' && data.isChunkedData) {
+      // Récupérer les métadonnées
+      const prefixedKey = this.getKey(key);
+      const metadataKey = `${prefixedKey}_metadata`;
+      const metadata = JSON.parse(localStorage.getItem(metadataKey) || '{"totalChunks": 0}');
+      
+      if (metadata.isChunked) {
+        // Reconstruire le tableau à partir des chunks
+        const result: T[] = [];
+        for (let i = 0; i < metadata.totalChunks; i++) {
+          const chunkKey = `${prefixedKey}_chunk_${i}`;
+          const chunkData = localStorage.getItem(chunkKey);
+          
+          if (chunkData) {
+            const chunk = JSON.parse(chunkData) as T[];
+            result.push(...chunk);
+          }
+        }
+        return result;
+      }
+    }
+    
+    return Array.isArray(data) ? data : [];
   }
   
   // Ajouter un élément à un tableau

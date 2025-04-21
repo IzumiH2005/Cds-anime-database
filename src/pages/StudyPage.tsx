@@ -29,8 +29,9 @@ enum QuizCheckMethod {
 }
 
 const StudyPage = () => {
-  const { id } = useParams();
+  const { id, deckId, themeId } = useParams();
   const navigate = useNavigate();
+  const effectiveDeckId = id || deckId; // Utiliser id ou deckId selon lequel est disponible
   const { toast } = useToast();
   const [studyMode, setStudyMode] = useState<StudyMode>(StudyMode.FLASHCARDS);
   const [cards, setCards] = useState<Flashcard[]>([]);
@@ -61,10 +62,10 @@ const StudyPage = () => {
   const geminiEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent";
 
   useEffect(() => {
-    if (!id) return;
+    if (!effectiveDeckId) return;
 
     try {
-      const deckData = getDeck(id);
+      const deckData = getDeck(effectiveDeckId);
       if (!deckData) {
         toast({
           title: "Deck introuvable",
@@ -76,11 +77,16 @@ const StudyPage = () => {
       }
       setDeck(deckData);
 
-      const deckCards = getFlashcardsByDeck(id);
+      const deckCards = getFlashcardsByDeck(effectiveDeckId);
       setCards(deckCards);
 
-      const deckThemes = getThemesByDeck(id);
+      const deckThemes = getThemesByDeck(effectiveDeckId);
       setThemes(deckThemes);
+      
+      // Si un themeId est spécifié dans l'URL, l'utiliser pour filtrer les cartes
+      if (themeId) {
+        setStudyTheme(themeId);
+      }
 
       setFilteredCards(shuffle ? shuffleArray([...deckCards]) : [...deckCards]);
 
@@ -96,7 +102,7 @@ const StudyPage = () => {
         variant: "destructive",
       });
     }
-  }, [id, navigate, toast]);
+  }, [effectiveDeckId, themeId, navigate, toast, shuffle]);
 
   useEffect(() => {
     if (!cards.length) return;
@@ -371,7 +377,7 @@ const StudyPage = () => {
                   : "Ce deck ne contient aucune carte. Veuillez ajouter des cartes avant d'étudier."}
               </AlertDescription>
             </Alert>
-            <Button onClick={() => navigate(`/deck/${id}`)}>
+            <Button onClick={() => navigate(`/deck/${effectiveDeckId}`)}>
               Retour au deck
             </Button>
           </div>

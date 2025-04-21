@@ -247,7 +247,7 @@ export const getSession = () => storage.get(SESSION_KEY);
 export const clearSession = () => storage.remove(SESSION_KEY);
 
 // Préférences utilisateur
-export const getUserPreferences = () => storage.get(USER_PREFERENCE_KEY) || {};
+export const getUserPreferences = () => storage.get<Record<string, any>>(USER_PREFERENCE_KEY, { defaultValue: {} });
 
 export const updateUserPreferences = (prefs: Record<string, any>) => {
   const currentPrefs = getUserPreferences();

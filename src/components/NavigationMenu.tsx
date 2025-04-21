@@ -1,4 +1,5 @@
-
+import * as React from "react";
+import { Link } from "react-router-dom";
 import {
   NavigationMenu,
   NavigationMenuContent,
@@ -6,122 +7,67 @@ import {
   NavigationMenuLink,
   NavigationMenuList,
   NavigationMenuTrigger,
-  navigationMenuTriggerStyle,
+  navigationMenuTriggerStyle
 } from "@/components/ui/navigation-menu";
 import { cn } from "@/lib/utils";
-import { Link, useLocation } from "react-router-dom";
-import React from "react";
-import { BookOpen, Lightbulb, Settings, Share2, TrendingUp, Folder } from "lucide-react";
-import { hasSession } from "@/lib/sessionManager";
 
-interface NavItem {
-  title: string;
-  href: string;
-  description?: string;
-  icon?: React.ReactNode;
-  external?: boolean;
-}
-
-const studyResources: NavItem[] = [
-  {
-    title: "Consulter les decks",
-    href: "/explore",
-    description: "Parcourir tous les decks disponibles pour étudier",
-    icon: <BookOpen className="h-5 w-5 text-indigo-500" />,
-  },
-  {
-    title: "Méthodes d'apprentissage",
-    href: "/learning-methods",
-    description: "Découvrir les meilleures techniques d'apprentissage",
-    icon: <Lightbulb className="h-5 w-5 text-yellow-500" />,
-  },
-  {
-    title: "Statistiques d'apprentissage",
-    href: "/stats",
-    description: "Suivre votre progression et vos performances",
-    icon: <TrendingUp className="h-5 w-5 text-green-500" />,
-  },
-];
-
-const resourcesItems: NavItem[] = [
-  {
-    title: "Paramètres",
-    href: "/profile",
-    description: "Gérer votre profil et vos préférences",
-    icon: <Settings className="h-5 w-5 text-slate-500" />,
-  },
-  {
-    title: "Partager",
-    href: "/share",
-    description: "Partager vos decks et votre progression",
-    icon: <Share2 className="h-5 w-5 text-blue-500" />,
-  },
-  {
-    title: "Mes Decks",
-    href: "/my-decks",
-    description: "Voir tous vos decks personnels",
-    icon: <Folder className="h-5 w-5 text-blue-500" />,
-  },
-];
-
-export function AppNavigationMenu() {
-  const location = useLocation();
-  
-  // Don't render navigation menu if user is not logged in
-  if (!hasSession()) {
-    return null;
-  }
-  
+export default function NavMenu() {
   return (
     <NavigationMenu>
       <NavigationMenuList>
         <NavigationMenuItem>
-          <NavigationMenuTrigger className="bg-transparent">Étudier</NavigationMenuTrigger>
+          <NavigationMenuTrigger>Étudier</NavigationMenuTrigger>
+          <NavigationMenuContent>
+            <ul className="grid gap-3 p-4 md:w-[400px] lg:w-[500px] lg:grid-cols-[.75fr_1fr]">
+              <li className="row-span-3">
+                <NavigationMenuLink asChild>
+                  <Link
+                    className="flex h-full w-full select-none flex-col justify-end rounded-md bg-gradient-to-b from-indigo-500 to-purple-600 p-6 no-underline outline-none focus:shadow-md"
+                    to="/my-decks"
+                  >
+                    <div className="mt-4 mb-2 text-lg font-medium text-white">
+                      Mes Decks
+                    </div>
+                    <p className="text-sm leading-tight text-white/90">
+                      Accédez à vos decks personnels et commencez à étudier.
+                    </p>
+                  </Link>
+                </NavigationMenuLink>
+              </li>
+              <ListItem to="/study" title="Mode Étude">
+                Révisez vos cartes avec différentes méthodes d'apprentissage.
+              </ListItem>
+              <ListItem to="/stats" title="Statistiques">
+                Suivez votre progression et analysez vos performances.
+              </ListItem>
+              <ListItem to="/learning-methods" title="Méthodes d'apprentissage">
+                Découvrez différentes techniques pour mémoriser efficacement.
+              </ListItem>
+            </ul>
+          </NavigationMenuContent>
+        </NavigationMenuItem>
+        <NavigationMenuItem>
+          <NavigationMenuTrigger>Créer</NavigationMenuTrigger>
           <NavigationMenuContent>
             <ul className="grid w-[400px] gap-3 p-4 md:w-[500px] md:grid-cols-2 lg:w-[600px]">
-              {studyResources.map((resource) => (
-                <ListItem
-                  key={resource.title}
-                  title={resource.title}
-                  href={resource.href}
-                  icon={resource.icon}
-                  isActive={location.pathname === resource.href}
-                >
-                  {resource.description}
-                </ListItem>
-              ))}
+              <ListItem to="/create" title="Nouveau Deck">
+                Créez un nouveau deck de flashcards personnalisé.
+              </ListItem>
+              <ListItem to="/import" title="Importer">
+                Importez un deck partagé par un autre utilisateur.
+              </ListItem>
+              <ListItem to="/themes" title="Thèmes">
+                Organisez vos flashcards par thèmes pour mieux structurer votre apprentissage.
+              </ListItem>
+              <ListItem to="/share" title="Partager">
+                Partagez vos decks avec d'autres utilisateurs.
+              </ListItem>
             </ul>
           </NavigationMenuContent>
         </NavigationMenuItem>
-        
         <NavigationMenuItem>
-          <NavigationMenuTrigger className="bg-transparent">Ressources</NavigationMenuTrigger>
-          <NavigationMenuContent>
-            <ul className="grid gap-3 p-4 md:w-[400px] lg:w-[500px]">
-              {resourcesItems.map((resource) => (
-                <ListItem
-                  key={resource.title}
-                  title={resource.title}
-                  href={resource.href}
-                  icon={resource.icon}
-                  isActive={location.pathname === resource.href}
-                >
-                  {resource.description}
-                </ListItem>
-              ))}
-            </ul>
-          </NavigationMenuContent>
-        </NavigationMenuItem>
-        
-        <NavigationMenuItem>
-          <Link to="/create">
-            <NavigationMenuLink className={cn(
-              navigationMenuTriggerStyle(), 
-              "bg-transparent",
-              location.pathname === "/create" && "bg-accent text-accent-foreground"
-            )}>
-              Créer
-            </NavigationMenuLink>
+          <Link to="/explore" className={navigationMenuTriggerStyle()}>
+            Explorer
           </Link>
         </NavigationMenuItem>
       </NavigationMenuList>
@@ -129,33 +75,33 @@ export function AppNavigationMenu() {
   );
 }
 
-const ListItem = React.forwardRef<
-  React.ElementRef<"a">,
-  React.ComponentPropsWithoutRef<"a"> & { 
-    icon?: React.ReactNode;
-    isActive?: boolean;
+interface ListItemProps extends React.ComponentPropsWithoutRef<"a"> {
+  to: string;
+  title: string;
+  children?: React.ReactNode;
+}
+
+const ListItem = React.forwardRef<React.ElementRef<"a">, ListItemProps>(
+  ({ className, title, children, to, ...props }, ref) => {
+    return (
+      <li>
+        <NavigationMenuLink asChild>
+          <Link
+            ref={ref}
+            to={to}
+            className={cn(
+              "block select-none space-y-1 rounded-md p-3 leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground",
+              className
+            )}
+            {...props}
+          >
+            <div className="text-sm font-medium leading-none">{title}</div>
+            <p className="line-clamp-2 text-sm leading-snug text-muted-foreground">
+              {children}
+            </p>
+          </Link>
+        </NavigationMenuLink>
+      </li>
+    );
   }
->(({ className, title, icon, children, isActive, ...props }, ref) => {
-  return (
-    <li>
-      <Link
-        to={props.href || "#"}
-        className={cn(
-          "block select-none space-y-1 rounded-md p-3 leading-none no-underline outline-none transition-colors",
-          isActive ? "bg-accent text-accent-foreground" : "hover:bg-accent hover:text-accent-foreground",
-          className
-        )}
-        {...props}
-      >
-        <div className="flex items-center gap-2">
-          {icon}
-          <div className="text-sm font-medium leading-none">{title}</div>
-        </div>
-        <p className="line-clamp-2 text-sm leading-snug text-muted-foreground">
-          {children}
-        </p>
-      </Link>
-    </li>
-  );
-});
-ListItem.displayName = "ListItem";
+);
